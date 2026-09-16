@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments / package build output
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+
+# WorkBot local configuration and secrets
+config/local.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# WorkBot runtime state (SQLite DB, WAL/SHM, locks, queues, caches)
+state/
+linux/state/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Runtime logs
+logs/
+linux/logs/
+*.log
+
+# Local model/download caches
+.cache/
+.huggingface/
+huggingface-cache/
+models/cache/
+
+# Upgrade / temporary artifacts
+.workbot-upgrade-backup/
+*.bak
+*.tmp
+*.temp
+*.swp
+~$*
+
+# IDE / OS metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local test/report artifacts
+coverage.xml
+junit.xml
+reports/

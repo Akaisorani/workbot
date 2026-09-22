@@ -1,0 +1,14 @@
+[Unit]
+Description=WorkBot Linux agent worker
+After=network.target
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+Environment=WORKBOT_HOME=%h/.workbot
+ExecStart=/usr/bin/python3 %h/.workbot/worker_main.py daemon
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

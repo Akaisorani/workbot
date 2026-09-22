@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "workbot"
+version = "1.12.4"
+description = "Windows-centered multi-node office agent supervisor with Hybrid RAG, governed WeLink tools, durable delivery, approvals, recovery, memory, workspace knowledge, and capability-aware orchestration"
+requires-python = ">=3.11"
+dependencies = ["websockets>=15,<17"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+rag = ["sqlite-vec==0.1.9", "sentence-transformers>=5.4,<6", "transformers>=4.51,<5"]
+vision = ["rapidocr>=3,<4", "onnxruntime>=1.17,<2", "Pillow>=10,<13"]
+
+[project.scripts]
+workbot = "workbot.main:cli"
+
+[project.gui-scripts]
+workbot-gui = "workbot.gui.app:main"
+
+[tool.setuptools.packages.find]
+include = ["workbot*"]

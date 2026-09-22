@@ -1,0 +1,386 @@
+{
+  "database": "state/workbot.db",
+  "poll_interval_seconds": 3,
+  "bot_reply_prefix": "[AGENT]",
+  "workspace": ".",
+  "access_control": {
+    "default": "deny",
+    "allow_senders": [
+      "YOUR_WELINK_ACCOUNT"
+    ],
+    "deny_senders": [],
+    "allow_groups": [],
+    "deny_groups": [],
+    "log_denied": true,
+    "reply_denied": false
+  },
+  "im": {
+    "type": "welink",
+    "cli": "welink-cli",
+    "bootstrap_from_latest": true,
+    "groups": [
+      {
+        "group_id": "YOUR_WELINK_GROUP_ID",
+        "group_name": "YOUR_WELINK_GROUP_NAME"
+      }
+    ],
+    "transient_backoff_seconds": 30,
+    "transient_backoff_max_seconds": 300,
+    "send_verify_delay_seconds": 1.5,
+    "cli_trace": false,
+    "cli_timeout_seconds": 90,
+    "self_accounts": [
+      "YOUR_WELINK_ACCOUNT"
+    ],
+    "discovery": {
+      "mode": "all",
+      "refresh_seconds": 3,
+      "max_conversations_per_poll": 20,
+      "active_interval_seconds": 5,
+      "warm_interval_seconds": 30,
+      "quiet_interval_seconds": 300,
+      "history_count": 20,
+      "max_history_queries_per_poll": 1,
+      "history_min_interval_seconds": 3.333,
+      "rate_limit_cooldown_seconds": 30,
+      "history_limit_per_minute": 20,
+      "history_budget_per_minute": 18,
+      "recent_focus_count": 3,
+      "reply_boost_seconds": 120,
+      "recent_count": 20
+    },
+    "intent": {
+      "enabled": true,
+      "bot_aliases": [
+        "@WorkBot",
+        "WorkBot"
+      ],
+      "important_groups": [
+        "YOUR_WELINK_GROUP_ID"
+      ],
+      "ambient_batch_delay_seconds": 60,
+      "important_batch_delay_seconds": 12,
+      "max_batch_messages": 20,
+      "max_pending_agent_batches": 4,
+      "ambient_summary_every_messages": 100,
+      "require_alias": true
+    },
+    "realtime": {
+      "enabled": false,
+      "url": "ws://127.0.0.1:4080",
+      "secret": "",
+      "secret_env": "WORKBOT_WELINKBOT_SECRET",
+      "open_timeout_seconds": 5,
+      "auth_timeout_seconds": 5,
+      "reconnect_initial_seconds": 1,
+      "reconnect_max_seconds": 30,
+      "queue_max_messages": 5000,
+      "fallback_poll_interval_seconds": 3,
+      "reconcile_interval_seconds": 300,
+      "backfill_max_seconds": 120
+    },
+    "rich_message": {
+      "quote": {
+        "enabled": true,
+        "max_chars": 10000
+      },
+      "image": {
+        "enabled": true,
+        "allowed_roots": [],
+        "path_wait_seconds": 2.0,
+        "max_images_per_message": 4,
+        "max_file_mb": 30,
+        "ocr": {
+          "enabled": true,
+          "provider": "rapidocr",
+          "timeout_seconds": 20,
+          "max_chars_per_image": 5000,
+          "max_concurrent": 1
+        }
+      }
+    }
+  },
+  "agent": {
+    "command": "codeagent",
+    "cwd": ".",
+    "timeout_seconds": 900,
+    "new_args": [],
+    "resume_args": [
+      "--sessions",
+      "{session_id}"
+    ],
+    "prompt_transport": "arg",
+    "windows_batch_prompt_file": true,
+    "prompt_args": [
+      "--skip-safe-check",
+      "--permission-mode",
+      "bypassPermissions",
+      "-p",
+      "{prompt}"
+    ],
+    "max_session_turns": 40,
+    "max_session_age_seconds": 21600,
+    "new_session_args": [
+      "--session-id",
+      "{session_id}"
+    ],
+    "max_concurrent": 2,
+    "priority_interactive": 0,
+    "priority_workflow": 10,
+    "priority_ambient": 40,
+    "priority_maintenance": 80,
+    "gaussdb_context": {
+      "enabled": true,
+      "assume_for_database_questions": true,
+      "source_root": "D:\\workbot\\workspace\\source",
+      "manual_root": "D:\\workbot\\workspace\\manuals",
+      "wiki_mcp_tool": "wiki-mcp",
+      "wiki_entry_url": "https://wiki.example.com/workbot"
+    },
+    "observability": {
+      "recent_output_lines": 50,
+      "recent_output_max_chars": 16384,
+      "persist_run_summary": true
+    }
+  },
+  "nodes": {},
+  "agent_failure_cooldown_seconds": 60,
+  "workflow_step_timeout_seconds": 3600,
+  "default_node": null,
+  "conversation": {
+    "summary_every_messages": 12,
+    "summary_min_messages": 8
+  },
+  "memory": {
+    "auto_capture": true,
+    "auto_capture_sources": [
+      "workflow"
+    ],
+    "allow_summary_auto_capture": false,
+    "auto_global": false,
+    "conversation_batch_messages": 60,
+    "promotion_min_candidates": 4,
+    "promotion_night_start_hour": 1,
+    "promotion_night_end_hour": 5,
+    "cross_conversation_retrieval": true
+  },
+  "rag": {
+    "enabled": true,
+    "passive_enabled": true,
+    "active_enabled": true,
+    "embedding": {
+      "provider": "sentence-transformers",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "dimension": 512,
+      "device": "auto",
+      "batch_size": 16,
+      "query_prompt_name": "query",
+      "revision": "main",
+      "cpu_threads": 0
+    },
+    "vector": {
+      "backend": "sqlite-vec",
+      "allow_python_fallback": true
+    },
+    "index": {
+      "auto_sync": true,
+      "auto_embed": true,
+      "batch_chunks": 24,
+      "job_batch_chunks": 32,
+      "chunk_chars": 4500
+    },
+    "retrieval": {
+      "lexical_top_k": 30,
+      "vector_top_k": 30,
+      "final_top_k": 8,
+      "rrf_k": 60,
+      "lexical_weight": 1.0,
+      "vector_weight": 1.2,
+      "max_chunks_per_document": 2,
+      "memory_scope": "all"
+    },
+    "active": {
+      "max_rounds": 2,
+      "max_top_k": 16
+    },
+    "reranker": {
+      "enabled": false,
+      "provider": "sentence-transformers",
+      "model": "Qwen/Qwen3-Reranker-0.6B",
+      "revision": "main",
+      "device": "auto",
+      "batch_size": 8,
+      "candidate_k": 16
+    }
+  },
+  "rpc": {
+    "enabled": false,
+    "allowed_nodes": [
+      "linux-dev"
+    ],
+    "allowed_methods": [
+      "windows.fs.read",
+      "windows.fs.list",
+      "workbot.query"
+    ],
+    "windows_read_roots": [
+      "D:\\code\\workbot"
+    ],
+    "max_response_chars": 16000,
+    "max_file_chars": 64000,
+    "timeout_seconds": 300,
+    "max_concurrent": 2
+  },
+  "action_policy": {
+    "default": "approve",
+    "approver_senders": [],
+    "approval_timeout_seconds": 900,
+    "rules": [
+      {
+        "match": [
+          "read.*",
+          "search.*",
+          "status.*",
+          "windows.fs.read",
+          "windows.fs.list",
+          "workbot.query",
+          "code.edit.workspace",
+          "build.run",
+          "test.run",
+          "git.status",
+          "git.diff",
+          "git.commit.local"
+        ],
+        "decision": "allow"
+      },
+      {
+        "match": [
+          "git.push",
+          "git.merge",
+          "git.force_push",
+          "git.reset_hard",
+          "git.clean.force",
+          "deploy.*",
+          "release.*",
+          "im.send",
+          "email.send",
+          "calendar.write",
+          "cloud.write",
+          "fs.delete.*",
+          "fs.write.outside_workspace",
+          "database.write.*",
+          "process.sudo",
+          "im.write",
+          "email.write",
+          "meeting.write",
+          "cloud.share",
+          "contact.write"
+        ],
+        "decision": "approve"
+      },
+      {
+        "match": [
+          "credential.export",
+          "secret.exfiltrate",
+          "security.disable",
+          "system.destructive"
+        ],
+        "decision": "deny"
+      }
+    ]
+  },
+  "outbound": {
+    "retry_seconds": 15,
+    "retry_max_seconds": 300,
+    "welink_max_message_chars": 3500
+  },
+  "ingestion_policy": {
+    "default": "allow",
+    "allow_senders": [],
+    "deny_senders": [],
+    "allow_groups": [],
+    "deny_groups": [],
+    "log_denied": true,
+    "reply_denied": false
+  },
+  "reply_policy": {
+    "default": "allow",
+    "allow_senders": [],
+    "deny_senders": [],
+    "allow_groups": [],
+    "deny_groups": [],
+    "silent_if_unfulfillable": true,
+    "log_denied": true,
+    "reply_denied": false
+  },
+  "execution_policy": {
+    "default": "deny",
+    "allow_senders": [
+      "YOUR_WELINK_ACCOUNT"
+    ],
+    "deny_senders": [],
+    "allow_groups": [],
+    "deny_groups": [],
+    "log_denied": true,
+    "reply_denied": false
+  },
+  "maintenance": {
+    "interval_seconds": 120
+  },
+  "welink_tools": {
+    "managed_gateway": true,
+    "gateway_trace": false,
+    "shared_gate_path": "state/welink-cli.gate",
+    "shared_rate_path": "state/welink-rate.json"
+  },
+  "workspace_knowledge": {
+    "enabled": true,
+    "roots": [],
+    "idle_grace_seconds": 300,
+    "night_start_hour": 1,
+    "night_end_hour": 6,
+    "project_discovery_depth": 3,
+    "discovery_interval_seconds": 3600,
+    "scan_interval_seconds": 21600,
+    "max_files_per_project": 4000,
+    "max_file_bytes": 262144,
+    "chunk_chars": 6000,
+    "max_chunks_per_file": 24,
+    "analysis_max_files": 36,
+    "analysis_file_chars": 5000,
+    "analysis_max_chars": 100000,
+    "night_scan_interval_seconds": 3600,
+    "allow_daytime_idle": true,
+    "index_path_depth": 12,
+    "max_projects_per_root": 100,
+    "remote_defaults": {
+      "project_discovery_depth": 2,
+      "index_path_depth": 5,
+      "max_projects": 20,
+      "max_files_per_project": 1200,
+      "max_file_bytes": 131072,
+      "chunk_chars": 4000,
+      "max_chunks_per_project": 160,
+      "max_index_chars_per_project": 600000,
+      "discovery_interval_seconds": 3600,
+      "scan_interval_seconds": 21600,
+      "night_scan_interval_seconds": 3600,
+      "index_root_without_marker": false
+    }
+  },
+  "setup": {
+    "config_backup_count": 5
+  },
+  "config_reload_interval_seconds": 2,
+  "collaboration": {
+    "enabled": false,
+    "agent_id": "",
+    "display_name": "",
+    "groups": [],
+    "discovery_enabled": true,
+    "peer_ttl_seconds": 300,
+    "accept_broadcast": false,
+    "max_hops": 4,
+    "peers": {}
+  }
+}

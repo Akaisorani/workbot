@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+import uuid
+from pathlib import Path
+
+
+def msg_id(prefix: str = "msg"):
+    return f"{prefix}-{uuid.uuid4().hex[:12]}"
+
+
+def workbot_home() -> Path:
+    return Path(os.environ.get("WORKBOT_HOME", str(Path.home() / ".workbot"))).expanduser()
+
+
+def socket_path() -> str:
+    return os.environ.get("WORKBOT_SOCKET", str(workbot_home() / "run" / "worker.sock"))
+
+
+def ensure_worker() -> None:
+    entry = workbot_home() / "worker_main.py"
+    proc = subprocess.run(
+        [sys.executable, str(entry), "ensure"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=15,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"failed to start local agent-worker: {proc.stderr.strip()}")
+
+
+def send(obj: dict, *, timeout: float = 330.0) -> dict:
+    path = socket_path()
+    for attempt in range(2):
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                s.settimeout(timeout)
+                s.connect(path)
+                f = s.makefile("rwb", buffering=0)
+                f.write((json.dumps({"role": "local", "pid": os.getpid()}) + "\n").encode())
+                hello = f.readline()
+                if not hello:
+                    raise RuntimeError("worker closed connection before hello")
+                f.write((json.dumps(obj, ensure_ascii=False) + "\n").encode())
+                reply = f.readline()
+                if not reply:
+                    raise RuntimeError("worker closed connection without response")
+                return json.loads(reply)
+        except (FileNotFoundError, ConnectionRefusedError):
+            if attempt == 0:
+                ensure_worker()
+                continue
+            raise
+    raise RuntimeError("unreachable")
+
+
+def parse_json_data(raw: str | None) -> dict:
+    if not raw:
+        return {}
+    obj = json.loads(raw)
+    if not isinstance(obj, dict):
+        raise ValueError("--data-json must be a JSON object")
+    return obj
+
+
+def make_request(method: str, data: dict) -> dict:
+    return {
+        "version": 1,
+        "type": "request",
+        "id": msg_id("req"),
+        "ts": time.time(),
+        "method": method,
+        "task_id": os.environ.get("WORKBOT_TASK_ID"),
+        "source": os.environ.get("WORKBOT_NODE"),
+        "target": "workbot",
+        "data": data,
+    }
+
+
+def task_turn_metadata() -> dict:
+    data = {}
+    turn = os.environ.get("WORKBOT_TASK_TURN")
+    seq = os.environ.get("WORKBOT_INSTRUCTION_SEQ")
+    if turn and str(turn).isdigit():
+        data["_task_turn"] = int(turn)
+    if seq and str(seq).isdigit():
+        data["_instruction_seq"] = int(seq)
+    return data
+
+def print_rpc(reply: dict, *, text_only: bool = False) -> int:
+    data = reply.get("data") or {}
+    if not data.get("ok"):
+        print(data.get("error") or "WorkBot RPC failed", file=sys.stderr)
+        return 2
+    result = data.get("result") or {}
+    if text_only:
+        if isinstance(result, dict) and "text" in result:
+            print(result["text"])
+        elif isinstance(result, dict) and "content" in result:
+            print(result["content"])
+        else:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+
+def emit_audit_event(event_name: str, data: dict) -> None:
+    data = {**task_turn_metadata(), **data}
+    obj = {
+        "version": 1, "type": "event", "id": msg_id("evt"), "ts": time.time(),
+        "event": event_name, "task_id": os.environ.get("WORKBOT_TASK_ID"),
+        "source": os.environ.get("WORKBOT_NODE"), "data": data,
+    }
+    try:
+        send(obj, timeout=30.0)
+    except Exception:
+        # Audit delivery uses the worker outbox when reachable, but an audit
+        # transport failure must not change the wrapped command's exit code.
+        pass
+
+
+def gated_execute(action: str, summary: str, argv: list[str], *, details: dict | None = None, timeout: float = 930.0) -> int:
+    if not argv:
+        print("gated-exec requires a command after --", file=sys.stderr)
+        return 2
+    actual = dict(details or {})
+    actual["argv"] = list(argv)
+    actual["cwd"] = os.getcwd()
+    actual["managed_task"] = bool(os.environ.get("WORKBOT_MANAGED_TASK"))
+    data = {
+        "action": action, "summary": summary, "details": actual,
+        "timeout_seconds": max(1.0, timeout - 5.0),
+    }
+    cid = os.environ.get("WORKBOT_CONVERSATION_ID")
+    if cid:
+        data["conversation_id"] = cid
+    reply = send(make_request("policy.request_approval", data), timeout=timeout)
+    envelope = reply.get("data") or {}
+    result = envelope.get("result") or {}
+    if not envelope.get("ok"):
+        print(envelope.get("error") or "approval request failed", file=sys.stderr)
+        return 2
+    if not result.get("approved"):
+        print(f"WorkBot denied {action}: {result.get('reason') or result.get('decision') or 'denied'}", file=sys.stderr)
+        return 3
+    approval_id = result.get("approval_id")
+    proc = subprocess.run(argv)
+    emit_audit_event("policy.action.executed", {
+        "action": action, "summary": summary, "approval_id": approval_id,
+        "auto": bool(result.get("auto")), "argv": argv, "cwd": actual["cwd"],
+        "exit_code": int(proc.returncode),
+    })
+    return int(proc.returncode)
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="agentctl", description="Local CLI for the WorkBot agent-worker")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    n = sub.add_parser("notify", help="Persist and publish an asynchronous event to WorkBot")
+    n.add_argument("--event", default="agent.notification")
+    n.add_argument("--task", default=os.environ.get("WORKBOT_TASK_ID"))
+    n.add_argument("--summary", required=True)
+    n.add_argument("--status", default=None)
+    n.add_argument("--conversation", default=os.environ.get("WORKBOT_CONVERSATION_ID") or None,
+                   help="Optional explicit WorkBot conversation id, e.g. welink:group:123")
+
+    r = sub.add_parser("request", help="Send a synchronous request to Windows WorkBot")
+    r.add_argument("--method", required=True, help="RPC method, e.g. windows.fs.read or workbot.query")
+    r.add_argument("--data-json", default="{}", help="JSON object with method parameters")
+    r.add_argument("--timeout", type=float, default=330.0)
+    r.add_argument("--text", action="store_true", help="Print result text/content only when possible")
+
+    a = sub.add_parser("ask-workbot", help="Ask the Windows WorkBot/CodeAgent a read-only question")
+    a.add_argument("--instruction", required=True)
+    a.add_argument("--conversation", default=os.environ.get("WORKBOT_CONVERSATION_ID") or None)
+    a.add_argument("--timeout", type=float, default=330.0)
+
+    f = sub.add_parser("read-windows", help="Read an allow-listed Windows text file through WorkBot")
+    f.add_argument("path")
+    f.add_argument("--timeout", type=float, default=60.0)
+
+    l = sub.add_parser("list-windows", help="List an allow-listed Windows directory through WorkBot")
+    l.add_argument("path")
+    l.add_argument("--max-entries", type=int, default=200)
+    l.add_argument("--timeout", type=float, default=60.0)
+
+    apv = sub.add_parser("request-approval", help="Request WorkBot/user approval before a policy-sensitive action")
+    apv.add_argument("--action", required=True, help="Stable action name, e.g. git.push or deploy.production")
+    apv.add_argument("--summary", required=True, help="Short user-visible description of the intended action")
+    apv.add_argument("--details-json", default="{}", help="Optional JSON object with target/command/context details")
+    apv.add_argument("--conversation", default=os.environ.get("WORKBOT_CONVERSATION_ID") or None)
+    apv.add_argument("--timeout", type=float, default=930.0)
+
+    gx = sub.add_parser("gated-exec", help="Approve/deny a policy action, then execute the exact command argv")
+    gx.add_argument("--action", required=True)
+    gx.add_argument("--summary", required=True)
+    gx.add_argument("--details-json", default="{}")
+    gx.add_argument("--timeout", type=float, default=930.0)
+    gx.add_argument("command", nargs=argparse.REMAINDER, help="Command after --")
+
+    ws = sub.add_parser("worker-status", help="Show node-local worker task/recovery state without Windows RPC")
+
+    args = ap.parse_args()
+    if args.cmd == "notify":
+        data = {"summary": args.summary, **task_turn_metadata()}
+        if args.status:
+            data["status"] = args.status
+        if args.conversation:
+            data["conversation_id"] = args.conversation
+        obj = {
+            "version": 1,
+            "type": "event",
+            "id": msg_id("evt"),
+            "ts": time.time(),
+            "event": args.event,
+            "task_id": args.task,
+            "source": os.environ.get("WORKBOT_NODE"),
+            "data": data,
+        }
+        reply = send(obj, timeout=30.0)
+        print(json.dumps(reply, ensure_ascii=False))
+        return 0
+
+    if args.cmd == "gated-exec":
+        argv = list(args.command or [])
+        if argv and argv[0] == "--":
+            argv = argv[1:]
+        return gated_execute(args.action, args.summary, argv, details=parse_json_data(args.details_json), timeout=args.timeout)
+
+    if args.cmd == "worker-status":
+        reply = send(make_request("worker.local_status", {}), timeout=30.0)
+        return print_rpc(reply)
+
+    if args.cmd == "request":
+        obj = make_request(args.method, parse_json_data(args.data_json))
+        return print_rpc(send(obj, timeout=args.timeout), text_only=args.text)
+
+    if args.cmd == "ask-workbot":
+        data = {"instruction": args.instruction}
+        if args.conversation:
+            data["conversation_id"] = args.conversation
+        return print_rpc(send(make_request("workbot.query", data), timeout=args.timeout), text_only=True)
+
+    if args.cmd == "read-windows":
+        return print_rpc(send(make_request("windows.fs.read", {"path": args.path}), timeout=args.timeout), text_only=True)
+
+    if args.cmd == "list-windows":
+        return print_rpc(send(make_request("windows.fs.list", {"path": args.path, "max_entries": args.max_entries}), timeout=args.timeout))
+
+    if args.cmd == "request-approval":
+        data = {
+            "action": args.action,
+            "summary": args.summary,
+            "details": parse_json_data(args.details_json),
+            "timeout_seconds": max(1.0, args.timeout - 5.0),
+        }
+        if args.conversation:
+            data["conversation_id"] = args.conversation
+        reply = send(make_request("policy.request_approval", data), timeout=args.timeout)
+        result = (reply.get("data") or {}).get("result") or {}
+        if not (reply.get("data") or {}).get("ok"):
+            print((reply.get("data") or {}).get("error") or "approval request failed", file=sys.stderr)
+            return 2
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result.get("approved") else 3
+
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

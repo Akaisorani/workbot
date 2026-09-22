@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+real_sudo="${WORKBOT_REAL_SUDO:-/usr/bin/sudo}"
+if [[ ! -x "$real_sudo" ]]; then
+  echo "WorkBot sudo wrapper cannot locate /usr/bin/sudo; set WORKBOT_REAL_SUDO" >&2
+  exit 127
+fi
+printf -v summary '%q ' sudo "$@"
+exec "${WORKBOT_HOME:-$HOME/.workbot}/bin/agentctl" gated-exec \
+  --action process.sudo --summary "${summary% }" -- "$real_sudo" "$@"

@@ -1,0 +1,10 @@
+{
+  "node_name": "CHANGE_ME",
+  "codeagent_command": "codeagent",
+  "codeagent_new_template": "{codeagent} --session-id {session_id} -p \"$(cat {prompt})\" --skip-safe-check",
+  "agent_cwd_mode": "task",
+  "tmux_command": "tmux",
+  "codeagent_resume_template": "{codeagent} --sessions {session_id} -p \"$(cat {prompt})\" --skip-safe-check",
+  "execution_scope_kill_grace_seconds": 1.5,
+  "workspace_knowledge_roots": []
+}

@@ -68,3 +68,11 @@ Desktop.ini
 coverage.xml
 junit.xml
 reports/
+
+# V1.12.2 generated local agent context
+AGENTS.md
+AGENTS.md.bak-v1122
+config/local.json.bak-*
+
+# Local development handoff/context (may contain workstation-specific details)
+PROJECT_CONTEXT.md

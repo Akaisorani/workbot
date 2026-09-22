@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+real_git="${WORKBOT_REAL_GIT:-/usr/bin/git}"
+if [[ ! -x "$real_git" ]]; then
+  real_git="$(command -v git || true)"
+fi
+if [[ -z "$real_git" || "$real_git" == "$0" ]]; then
+  echo "WorkBot git wrapper cannot locate real git; set WORKBOT_REAL_GIT" >&2
+  exit 127
+fi
+
+args=("$@")
+sub=""
+sub_i=-1
+i=0
+while (( i < ${#args[@]} )); do
+  a="${args[$i]}"
+  case "$a" in
+    -C|-c|--git-dir|--work-tree|--namespace|--exec-path)
+      ((i+=2)); continue ;;
+    --git-dir=*|--work-tree=*|--namespace=*|--exec-path=*|--no-pager|--paginate|-p|--version|--help)
+      ((i+=1)); continue ;;
+    -*) ((i+=1)); continue ;;
+    *) sub="$a"; sub_i=$i; break ;;
+  esac
+done
+
+join_cmd() {
+  local out="" q
+  for q in "$@"; do printf -v q '%q' "$q"; out+=" $q"; done
+  printf '%s' "${out# }"
+}
+
+case "$sub" in
+  push)
+    action="git.push"
+    for a in "${args[@]:$((sub_i+1))}"; do
+      case "$a" in --force|--force-with-lease|-f) action="git.force_push";; esac
+    done
+    exec "${WORKBOT_HOME:-$HOME/.workbot}/bin/agentctl" gated-exec \
+      --action "$action" --summary "$(join_cmd git "$@")" -- "$real_git" "$@"
+    ;;
+  merge)
+    exec "${WORKBOT_HOME:-$HOME/.workbot}/bin/agentctl" gated-exec \
+      --action git.merge --summary "$(join_cmd git "$@")" -- "$real_git" "$@"
+    ;;
+  reset)
+    for a in "${args[@]:$((sub_i+1))}"; do
+      if [[ "$a" == "--hard" ]]; then
+        exec "${WORKBOT_HOME:-$HOME/.workbot}/bin/agentctl" gated-exec \
+          --action git.reset_hard --summary "$(join_cmd git "$@")" -- "$real_git" "$@"
+      fi
+    done
+    ;;
+  clean)
+    force=0
+    for a in "${args[@]:$((sub_i+1))}"; do
+      if [[ "$a" == -* && "$a" == *f* ]]; then force=1; fi
+    done
+    if (( force )); then
+      exec "${WORKBOT_HOME:-$HOME/.workbot}/bin/agentctl" gated-exec \
+        --action git.clean.force --summary "$(join_cmd git "$@")" -- "$real_git" "$@"
+    fi
+    ;;
+esac
+
+exec "$real_git" "$@"
